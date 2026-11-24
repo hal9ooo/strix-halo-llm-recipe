@@ -1,0 +1,40 @@
+{
+  "_comment": "Incolla questo blocco sotto la chiave 'providers' di ~/.config/opencode/opencode.json (schema V2). Poi `opencode run -m halogen/halogen-qwen3.8-flash-next \"ciao\"`.",
+  "halogen": {
+    "name": "Halogen locale (Strix Halo)",
+    "package": "@opencode/ai/providers/openai-compatible",
+    "settings": {
+      "baseURL": "http://127.0.0.1:8731/v1",
+      "apiKey": "local",
+      "headerTimeout": 600000
+    },
+    "models": {
+      "halogen-qwen3.8-flash-next": {
+        "name": "Qwen3.8-Flash-Next 128k (locale)",
+        "limit": { "context": 131072, "output": 16384 },
+        "capabilities": {
+          "tools": true,
+          "input": ["text", "image"],
+          "output": ["text"],
+          "reasoning": {
+            "supported": true,
+            "effort": ["low", "medium", "high", "xhigh"],
+            "toggle": true
+          }
+        },
+        "compatibility": {
+          "reasoningField": "reasoning_content",
+          "maxTokensField": "max_tokens",
+          "streamUsage": true
+        },
+        "variants": [
+          { "id": "none", "body": { "enable_thinking": false } },
+          { "id": "low", "body": { "reasoning_effort": "low" } },
+          { "id": "medium", "body": { "reasoning_effort": "medium" } },
+          { "id": "high", "body": { "reasoning_effort": "high" } },
+          { "id": "xhigh", "body": { "reasoning_effort": "xhigh" } }
+        ]
+      }
+    }
+  }
+}

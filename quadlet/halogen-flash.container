@@ -1,0 +1,46 @@
+[Unit]
+Description=halogen-flash-server — Qwen3.8-Flash-Next (Strix Halo)
+# Nessuna dipendenza da network-online: su questa macchina il target non viene
+# mai raggiunto e il servizio resterebbe in coda ~90 s a ogni avvio.
+
+[Container]
+ContainerName=halogen-flash
+Image=ghcr.io/peonist-ai/halogen-flash-server:0.20.7
+# Rete bridge con la sola 8731 pubblicata; il motore resta su 127.0.0.1:8730.
+PublishPort=8731:8731
+AddDevice=/dev/kfd
+AddDevice=/dev/dri
+GroupAdd=keep-groups
+PodmanArgs=--ipc=host --ulimit memlock=-1:-1 --stop-timeout=60
+# Pesi già scaricati: nessun HALOGEN_DOWNLOAD, il container non apre connessioni.
+# Il repo pesi contiene anche tokenizer/, quindi un solo volume basta.
+Volume=/mnt/llm/AI/Models/halogen-qwen3.8-flash-next:/models:ro
+# Contesto: 128k per richiesta (131072 = 128 * 1024). Il default sarebbe 262144.
+Environment=HALOGEN_CTX=131072
+# Pool KV: 4 x ctx = quattro conversazioni da 128k residenti, oppure otto da 64k.
+# E' il pool del Quickstart (524288) con un ctx piu' piccolo: stessa memoria,
+# ~14.4 GiB di device; restano ~19 GiB di RAM per la page cache della lookup table.
+Environment=HALOGEN_KV_POOL_POSITIONS=524288
+# Ricetta ufficiale per gli agenti: thinking xhigh (gia' il default del template)
+# e nessun cap artificiale. 16384 e' il budget che copre un turno agentico
+# ordinario quando il client non manda max_tokens (OpenCode manda il suo).
+Environment=HALOGEN_MAX_TOKENS_DEFAULT=16384
+# Lettura immagini: usa qwen38-flash-next-vision.hgn accanto al checkpoint.
+Environment=HALOGEN_VISION_TOWER=1
+# Cache del prompt su disco: sopravvive ai riavvii. Bound default 64 GiB,
+# ~27 KiB per token (una conversazione da 128k = ~3.5 GiB).
+Environment=HALOGEN_CACHE_DIR=/cache
+Volume=/home/gangio/.cache/halogen-cache:/cache
+# Tetto della cache su disco. Default 64 GiB, che qui si e' riempito in 5 ore
+# di lavoro agentico (17 conversazioni da ~3.8 GiB l'una) e ha iniziato a
+# sfrattare proprio le sessioni in corso. 96 GiB lascia margine e resta sotto
+# i 159 GiB liberi su /home. 0 = illimitato (sconsigliato).
+Environment=HALOGEN_CACHE_DISK_GIB=96
+
+[Service]
+Restart=always
+TimeoutStartSec=900
+TimeoutStopSec=90
+
+[Install]
+WantedBy=default.target

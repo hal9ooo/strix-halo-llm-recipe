@@ -59,10 +59,57 @@ scrivere arriva a 60.
 
 **Sintomo:** `ss -ltnp | grep 8731` mostra `0.0.0.0:8731`, non `127.0.0.1`.
 
-**Causa:** `PublishPort=8731:8731` pubblica su tutte le interfacce.
+**Causa:** una unit scritta come `PublishPort=8731:8731` pubblica su tutte le
+interfacce. Il server **non ha una API key per default**: chiunque sulla LAN può
+usare il modello e leggere le tue conversazioni.
 
-**Rimedio:** `PublishPort=127.0.0.1:8731:8731`, oppure `HALOGEN_API_KEY`.
-Chiunque sulla LAN può usare il modello e leggere le tue conversazioni.
+**Rimedio:** la quadlet di questa ricetta spedisce già
+`PublishPort=127.0.0.1:8731:8731`. Se hai copiato la riga da un esempio vecchio,
+riportala a quella forma. Per usarlo dalla rete servono **entrambe** le cose:
+`HALOGEN_API_KEY` (il server la controlla) e un reverse proxy con TLS davanti,
+pubblicando solo il proxy.
+
+Verifica dopo ogni modifica, perché è silenzioso:
+
+```bash
+ss -ltnp | grep 8731          # deve dire 127.0.0.1:8731
+curl -s -o /dev/null -w '%{http_code}\n' http://$(hostname -I | awk '{print $1}'):8731/health
+# 000 = non raggiungibile dalla LAN, che è quello che vuoi
+```
+
+## Il servizio sparisce dopo il logout
+
+**Sintomo:** dopo essersi disconnessi, `curl localhost:8731/health` non risponde
+e `systemctl --user status halogen-flash` dice che la unit non esiste o è
+`inactive`. Al login successivo torna tutto.
+
+**Causa:** senza lingering, systemd chiude la sessione utente (e con essa tutte
+le sue unit) quando l'ultimo login termina. Su una macchina che serve un agente
+questo è quasi sempre sbagliato.
+
+**Rimedio:** `sudo loginctl enable-linger "$USER"`. `tools/preflight.sh` lo
+controlla e lo segnala come `warn` se è spento.
+
+## Gli script non partono: "set: pipefail: invalid option name"
+
+**Sintomo:** `bash tools/health.sh` muore subito con quel messaggio, oppure
+`systemd` non carica la quadlet, o `case: syntax error near unexpected token`.
+
+**Causa:** i file hanno fine riga **CRLF**. Li ha scritti un editor Windows, o
+`git` li ha convertiti al checkout perché `core.autocrlf=true`. `bash` legge il
+`\r` come parte del token e tutto si rompe. La quadlet ha lo stesso problema:
+`systemd` non parsa un file CRLF.
+
+**Rimedio:** il repo ha un `.gitattributes` che forza `eol=lf` su `*.sh` e
+`*.container`, quindi un clone pulito è a posto. Se hai già il checkout:
+
+```bash
+git rm --cached -r . >/dev/null && git reset --hard   # riapplica gli attributi
+file tools/health.sh                                  # non deve dire "with CRLF"
+```
+
+Non serve convertire a mano: se il file è ancora CRLF dopo il `reset`, il
+`.gitattributes` non è arrivato in quel checkout (aggiorna il clone).
 
 ## Un agente ha ucciso il server di un altro progetto
 

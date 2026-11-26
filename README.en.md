@@ -33,6 +33,7 @@ machine instead of copying it blind.
 | `tools/preflight.sh` | **run this first**: checks host, kernel, weights, RAM, disk |
 | `tools/health.sh` | status, pool, cache, throughput, process memory |
 | `tools/agent.sh` | launches a coding agent on the model, with timeout and log |
+| `docs/SETUP-PROMPT.md` | **the prompt to hand an agent** so it performs the setup |
 | `docs/requirements.md` | how to get the weights, and the two host prerequisites |
 | `docs/sizing.md` | ctx and KV pool: the RAM arithmetic, and what to change |
 | `docs/opencode.md` | thinking variants, token budget, timeouts |

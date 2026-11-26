@@ -32,6 +32,7 @@ adattarla alla tua macchina invece di copiarla alla cieca.
 | `tools/preflight.sh` | **lancia questo per primo**: host, kernel, pesi, RAM, disco |
 | `tools/health.sh` | stato, pool, cache, throughput, memoria del processo |
 | `tools/agent.sh` | lancia un agente di coding sul modello, con timeout e log |
+| `docs/SETUP-PROMPT.md` | **il prompt da dare a un agente** per fargli fare il setup |
 | `docs/requirements.md` | come si prendono i pesi, e i due prerequisiti dell'host |
 | `docs/sizing.md` | ctx e pool KV: il conto della RAM, e cosa cambiare |
 | `docs/opencode.md` | varianti di thinking, budget dei token, timeout |

@@ -33,14 +33,24 @@ warn() { printf '  \033[33mwarn\033[0m  %s\n' "$*"; }
 bad()  { printf '  \033[31mFAIL\033[0m  %s\n' "$*"; FAILS=$((FAILS+1)); }
 head_() { printf '\n%s\n' "$*"; }
 
-# --- 1. host: Linux nativo, non WSL, non container -------------------------
+# --- 1. host: Linux nativo, non WSL, non un emulatore --------------------
 head_ "host"
-if [[ -r /proc/version ]] && grep -qi microsoft /proc/version; then
-  bad "sei su WSL2: il motore passa per /dev/dxg e la registrazione viene rifiutata. Serve Linux nativo."
-elif [[ ! -e /proc/version ]]; then
-  bad "non sembra Linux: il motore esiste solo per Linux nativo (amdgpu/KFD)."
-else
-  ok "Linux nativo ($(uname -r))"
+kernel_name=$(uname -s 2>/dev/null || echo unknown)
+case "$kernel_name" in
+  Linux) : ;;
+  Darwin)
+    bad "sei su macOS: il motore esiste solo per Linux nativo (amdgpu/KFD)." ;;
+  MINGW*|MSYS*|CYGWIN*)
+    bad "sei su Windows ($kernel_name): il motore non esiste per Windows e i pesi .hgn non si aprono con llama.cpp. Serve avviare Linux su questa macchina." ;;
+  *)
+    bad "sistema non Linux ($kernel_name): il motore richiede Linux nativo con amdgpu/KFD." ;;
+esac
+if [[ $kernel_name == Linux ]]; then
+  if [[ -r /proc/version ]] && grep -qi microsoft /proc/version; then
+    bad "sei su WSL2: il motore passa per /dev/dxg, non per KFD, e la registrazione viene rifiutata. Serve Linux nativo."
+  else
+    ok "Linux nativo ($(uname -r))"
+  fi
 fi
 if [[ -f /run/.containerenv ]] || [[ -f /.dockerenv ]]; then
   warn "stai girando dentro un container: i controlli su /dev e sysfs riflettono quello"

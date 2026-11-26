@@ -1,4 +1,4 @@
-# halogen-setup
+# strix-halo-llm-recipe
 
 Configurazione **verificata sul campo** per far girare il modello linguistico
 `halogen-qwen3.8-flash-next` interamente in locale su una macchina AMD Strix
@@ -16,11 +16,11 @@ adattarla alla tua macchina invece di copiarla alla cieca.
                      ▼  http://127.0.0.1:8731/v1
   ┌──────────────────────────────────────────────────────────────┐
   │ quadlet: halogen-flash.container (Podman, utente)            │
-  │  ctx 131072 · pool KV 524288 · 4 slot · vision · cache disk  │
+  │  ctx 131072 · pool KV 524288 · 4 slot · vision · cache 96GiB │
   └──────────────────────────────────────────────────────────────┘
                      │
                      ▼  /models (read-only)
-  /mnt/llm/AI/Models/halogen-qwen3.8-flash-next  (~115 GB)
+  ~/halogen-models  (~115 GB)
 ```
 
 ## Contenuto
@@ -29,8 +29,10 @@ adattarla alla tua macchina invece di copiarla alla cieca.
 |---|---|
 | `quadlet/halogen-flash.container` | unit Podman utente, pronta da copiare |
 | `opencode/halogen-provider.json` | blocco `providers.halogen` per OpenCode V2 |
+| `tools/preflight.sh` | **lancia questo per primo**: host, kernel, pesi, RAM, disco |
 | `tools/health.sh` | stato, pool, cache, throughput, memoria del processo |
 | `tools/agent.sh` | lancia un agente di coding sul modello, con timeout e log |
+| `docs/requirements.md` | come si prendono i pesi, e i due prerequisiti dell'host |
 | `docs/sizing.md` | ctx e pool KV: il conto della RAM, e cosa cambiare |
 | `docs/opencode.md` | varianti di thinking, budget dei token, timeout |
 | `docs/measured.md` | i numeri misurati su questa macchina |
@@ -38,22 +40,30 @@ adattarla alla tua macchina invece di copiarla alla cieca.
 
 ## Quick start
 
-Requisiti: Linux con Podman ≥ 5, GPU AMD con `/dev/kfd` e `/dev/dri`, almeno
-96 GB di RAM, i pesi già su disco.
+Requisiti: **Linux nativo** (non WSL2) con Podman ≥ 5, GPU AMD con `/dev/kfd` e
+`/dev/dri`, un kernel con le fix gfx1151 di AMD e `CONFIG_HSA_AMD_SVM`, almeno
+96 GB di RAM, i pesi già su disco. Ognuno è spiegato in
+[`docs/requirements.md`](docs/requirements.md), insieme al motivo per cui
+Windows e WSL2 non possono funzionare affatto.
 
 ```bash
+# 0. siamo pronti? sola lettura, nessun effetto collaterale, nomina ogni ostacolo
+bash tools/preflight.sh
+
 # 1. pesi (~115 GB): dove vuoi, anche su un altro disco
-#    es. /mnt/llm/AI/Models/halogen-qwen3.8-flash-next
+#    hf download peonist-ai/halogen-qwen3.8-flash-next --local-dir ~/halogen-models
 
 # 2. unit Podman utente (mai root)
 mkdir -p ~/.config/containers/systemd
 cp quadlet/halogen-flash.container ~/.config/containers/systemd/
-#    apri il file e correggi i due path:
+#    apri il file e correggi tre cose:
 #      Volume=<pesi>:/models:ro
-#      Volume=<cache>:/cache
+#      Volume=<la tua home>/.cache/halogen-cache:/cache
+#      ContainerName / HALOGEN_CTX se hai ridimensionato (docs/sizing.md)
 
-# 3. cache del prompt su disco (fuori da tmpfs/overlay)
+# 3. cache del prompt su disco (fuori da tmpfs/overlay), e in vita dopo il logout
 mkdir -p ~/.cache/halogen-cache
+sudo loginctl enable-linger "$USER"
 
 # 4. avvio
 systemctl --user daemon-reload
@@ -119,3 +129,7 @@ indipendente via test e screenshot riletti dal modello stesso.
 
 Ricetta e script: MIT. Pesi e immagine del server restano dei loro autori
 (`ghcr.io/peonist-ai/halogen-flash-server`) e non sono inclusi qui.
+
+"halogen" è un marchio di Peonist, LLC. Questo repository è una ricetta di
+deployment indipendente, non affiliata né approvata da loro; si descrive come
+"halogen recipe", uso che la loro trademark policy permette esplicitamente.

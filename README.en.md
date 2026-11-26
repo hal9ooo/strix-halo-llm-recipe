@@ -1,108 +1,135 @@
-# halogen-setup
+# strix-halo-llm-recipe
 
-Configurazione **verificata sul campo** per far girare il modello
-`halogen-qwen3.8-flash-next` in locale su una macchina AMD Strix Halo con
-Podman, e usarlo da un coding agent fino a 4 sessioni in parallelo.
+A **field-tested** configuration for running the
+`halogen-qwen3.8-flash-next` model entirely on-device on an AMD Strix Halo
+machine with Podman, and driving it from a coding agent with up to 4 parallel
+sessions.
 
-Non è documentazione ufficiale: è la ricetta che abbiamo misurato, con i numeri.
-Ogni scelta ha il motivo e il costo.
+Not the vendor's documentation: it is the recipe we measured, with the numbers.
+Every choice carries its reason and its cost, so you can adapt it to your
+machine instead of copying it blind.
+
+> Versione italiana: [README.md](README.md)
 
 ```
   opencode run -m halogen/halogen-qwen3.8-flash-next#xhigh
                      │
                      ▼  http://127.0.0.1:8731/v1
   ┌──────────────────────────────────────────────────────────────┐
-  │ quadlet: halogen-flash.container (Podman, utente)            │
-  │  ctx 131072 · pool KV 524288 · 4 slot · vision · cache 64GiB │
+  │ quadlet: halogen-flash.container (Podman, user unit)         │
+  │  ctx 131072 · KV pool 524288 · 4 slots · vision · cache 96GiB │
   └──────────────────────────────────────────────────────────────┘
                      │
                      ▼  /models (read-only)
-  /mnt/llm/AI/Models/halogen-qwen3.8-flash-next  (~115 GB)
+  ~/halogen-models  (~115 GB)
 ```
 
-## Contenuto
+## What is here
 
-| Path | Cosa |
+| Path | What |
 |---|---|
-| `quadlet/halogen-flash.container` | unit Podman utente, pronta da copiare |
-| `opencode/halogen-provider.json` | blocco `providers.halogen` per OpenCode V2 |
-| `tools/health.sh` | stato, pool, cache, throughput, memoria del processo |
-| `tools/agent.sh` | lancia un agente di coding sul modello, con timeout e log |
-| `docs/sizing.md` | ctx e pool KV: il conto della RAM, e cosa cambiare |
-| `docs/opencode.md` | varianti di thinking, budget dei token, timeout |
-| `docs/measured.md` | i numeri misurati su questa macchina |
-| `docs/troubleshooting.md` | i problemi che ci sono costati tempo |
+| `quadlet/halogen-flash.container` | Podman user unit, ready to copy |
+| `opencode/halogen-provider.json` | `providers.halogen` block for OpenCode V2 |
+| `tools/preflight.sh` | **run this first**: checks host, kernel, weights, RAM, disk |
+| `tools/health.sh` | status, pool, cache, throughput, process memory |
+| `tools/agent.sh` | launches a coding agent on the model, with timeout and log |
+| `docs/requirements.md` | how to get the weights, and the two host prerequisites |
+| `docs/sizing.md` | ctx and KV pool: the RAM arithmetic, and what to change |
+| `docs/opencode.md` | thinking variants, token budget, timeouts |
+| `docs/measured.md` | the numbers measured on this machine |
+| `docs/troubleshooting.md` | the problems that cost us time |
 
 ## Quick start
 
-Requisiti: Linux con Podman ≥ 5, GPU AMD con `/dev/kfd` e `/dev/dri`, ≥ 96 GB
-di RAM, i pesi già su disco.
+Requirements: **native Linux** (not WSL2) with Podman ≥ 5, an AMD GPU with
+`/dev/kfd` and `/dev/dri`, a kernel with AMD's gfx1151 fixes and
+`CONFIG_HSA_AMD_SVM`, at least 96 GB of RAM, the weights already on disk.
+[`docs/requirements.md`](docs/requirements.md) covers each one, and why
+Windows and WSL2 cannot work at all.
 
 ```bash
-# 1. pesi (~115 GB): dove vuoi, anche su un altro disco
-#    es. /mnt/llm/AI/Models/halogen-qwen3.8-flash-next
+# 0. are we ready? read-only, no side effects, names every blocker
+bash tools/preflight.sh
 
-# 2. unit Podman utente (mai root)
+# 1. weights (~115 GB): anywhere, even on another disk
+#    hf download peonist-ai/halogen-qwen3.8-flash-next --local-dir ~/halogen-models
+
+# 2. Podman user unit (never root)
 mkdir -p ~/.config/containers/systemd
 cp quadlet/halogen-flash.container ~/.config/containers/systemd/
-#    apri il file e correggi i due path:
-#      Volume=<pesi>:/models:ro
-#      Volume=<cache>:/cache
+#    open it and fix three things:
+#      Volume=<weights>:/models:ro
+#      Volume=<your home>/.cache/halogen-cache:/cache
+#      ContainerName / HALOGEN_CTX if you sized down (docs/sizing.md)
 
-# 3. cache del prompt su disco (fuori da tmpfs/overlay)
+# 3. prompt cache on disk (outside tmpfs/overlay), and keep it across logouts
 mkdir -p ~/.cache/halogen-cache
+sudo loginctl enable-linger "$USER"
 
-# 4. avvio
+# 4. start
 systemctl --user daemon-reload
 systemctl --user start halogen-flash
 curl -s localhost:8731/health | jq '{status,model,context,slots}'
 
-# 5. OpenCode: incolla il blocco di opencode/halogen-provider.json
-#    sotto "providers" in ~/.config/opencode/opencode.json, poi:
-opencode run -m halogen/halogen-qwen3.8-flash-next "ciao"
+# 5. OpenCode: paste the block from opencode/halogen-provider.json
+#    under "providers" in ~/.config/opencode/opencode.json, then:
+opencode run -m halogen/halogen-qwen3.8-flash-next "hi"
 ```
 
-Verifica che tutto sia su: **`tools/health.sh`**.
+Confirm everything with **`tools/health.sh`**.
 
-## Le cinque scelte che rendono questa config "ottimizzata"
+## The five choices that make this config "optimised"
 
-1. **`HALOGEN_CTX=131072` invece del default 262144.** Il pool KV resta quello
-   ufficiale: stesse prestazioni, ma 4 conversazioni da 128k residenti invece di
-   2 da 256k. Le sessioni agentiche vere stanno sotto i 128k.
-2. **`HALOGEN_KV_POOL_POSITIONS=524288` (4 × ctx).** Quattro sessioni in volo,
-   la quinta aspetta invece di fallire.
-3. **`HALOGEN_VISION_TOWER=1`.** È ciò che permette a un agente di leggere uno
-   screenshot e verificare da solo una UI.
-4. **`HALOGEN_CACHE_DIR=/cache` su bind mount reale.** Una conversazione da 38k
-   riprende in 193 ms invece di 24 s di prefill. Deve stare su btrfs/ext4:
-   tmpfs e overlay sono rifiutati.
-5. **`HALOGEN_MAX_TOKENS_DEFAULT=16384`.** Copre reasoning + tool call +
-   risposta di un turno agentico, per i client che non mandano `max_tokens`.
+1. **`HALOGEN_CTX=131072` instead of the 262144 default.** The KV pool stays the
+   official size: same performance, but 4 resident 128k conversations instead of
+   2 of 256k. Real agentic sessions stay under 128k, and when they do not,
+   compaction costs less than a cold prefill.
+2. **`HALOGEN_KV_POOL_POSITIONS=524288` (4 × ctx).** Four sessions in flight;
+   the fifth waits instead of failing. It is the number the vendor recommends
+   with 4 slots.
+3. **`HALOGEN_VISION_TOWER=1`.** This is what lets an agent read a screenshot
+   and verify a UI or a site by itself. Costs a few GiB of VRAM.
+4. **`HALOGEN_CACHE_DIR=/cache` on a real bind mount.** A 38k conversation
+   resumes in 193 ms instead of a 24 s prefill. It must sit on a filesystem
+   that accepts `O_DIRECT`: btrfs/ext4 yes, tmpfs and overlay no.
+5. **`HALOGEN_MAX_TOKENS_DEFAULT=16384`.** Covers reasoning + tool call + answer
+   of an ordinary agentic turn, for clients that do not send `max_tokens`.
 
-E una sesta, imparata a nostre spese: **`HALOGEN_CACHE_DISK_GIB=96`**. Il
-default 64 si è riempito in 5 ore di lavoro agentico (17 conversazioni da
-~3,8 GiB) e ha iniziato a sfrattare le sessioni in corso.
+And a sixth, learned the hard way: **`HALOGEN_CACHE_DISK_GIB=96`**. The 64 GiB
+default filled up in 5 hours of agentic work (17 conversations of ~3.8 GiB) and
+started evicting the sessions that were running.
 
-## Cosa NON attivare senza misurarlo
+## What NOT to enable without measuring
 
-- `HALOGEN_INDEXER_BUDGET=4096` — retrieval leggermente migliore, prefill +6,7%,
-  risposte non byte-identiche. Il default 2048 va bene.
-- `HALOGEN_COMPOSABLE_CONTEXT=1` — compaction più veloce **ma rifiuta le
-  immagini**: se ti serve la visione, no.
+- `HALOGEN_INDEXER_BUDGET=4096` — slightly better retrieval, prefill +6.7%,
+  replies not byte-identical. The 2048 default is fine.
+- `HALOGEN_COMPOSABLE_CONTEXT=1` — faster compaction **but it refuses images**:
+  if you need vision, leave it off.
 
-## Numeri (misurati, non stimati)
+## Numbers (measured, not estimated)
 
 | | |
 |---|---|
-| Generazione | ~58 tok/s (media end-to-end con coda: ~23 tok/s) |
-| Prefill | ~1.060 tok/s |
-| Conversazione calda | 114 ms · dopo un riavvio dal disco 193 ms |
-| Cache hit, 5 agenti per 5 ore | **93,8%** — 86M token di prompt evitati |
-| RAM server | ~89,8 GiB su 121 (pesi 62,9 + pool 14,4 + working 12,4) |
+| Generation | ~58 tok/s (end-to-end mean with queueing: ~23 tok/s) |
+| Prefill | ~1,060 tok/s |
+| Warm conversation | 114 ms · 193 ms after a restart from disk |
+| Cache hit, 5 agents for 5 hours | **93.8%** — 86M prompt tokens avoided |
+| Server RAM | ~89.8 GiB of 121 (weights 62.9 + pool 14.4 + working 12.4) |
 
-Dettagli e comandi per riprodurre in [`docs/measured.md`](docs/measured.md).
+Details and reproduction commands in [`docs/measured.md`](docs/measured.md).
 
-## Licenza
+## Who already uses it
 
-Ricetta e script: MIT. Pesi e immagine del server restano dei loro autori
-(`ghcr.io/peonist-ai/halogen-flash-server`) e non sono inclusi qui.
+This is the configuration behind a real experiment: five complete software
+projects (two sites, one full-stack web app, one GTK4 app and one .NET
+solution) built by five agents in parallel on the local model, with independent
+verification through tests and screenshots read back by the model itself.
+
+## Licence
+
+Recipe and scripts: MIT. Weights and server image remain their authors'
+(`ghcr.io/peonist-ai/halogen-flash-server`) and are not included here.
+
+"halogen" is a trademark of Peonist, LLC. This repository is an independent
+deployment recipe, not affiliated with or endorsed by them; it is described as
+a "halogen recipe" under their trademark policy, which permits descriptive use.

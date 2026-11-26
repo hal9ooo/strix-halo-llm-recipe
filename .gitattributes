@@ -1,0 +1,7 @@
+# Questi file vanno a capo singolo comunque sia configurato git di chi clona:
+# con core.autocrlf=true una shell script con CRLF muore su "set: pipefail:
+# invalid option name", e una quadlet con CRLF non viene parsata da systemd.
+*.sh      text eol=lf
+*.container text eol=lf
+*.md      text
+*.json    text

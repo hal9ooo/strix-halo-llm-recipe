@@ -3,6 +3,12 @@
 Tutto quello che segue è stato misurato su questa macchina, non copiato dalla
 documentazione. Riproducibile con i comandi in fondo.
 
+L'host, perché i numeri valgano qualcosa: AMD Ryzen AI MAX+ 395 (Strix Halo,
+gfx1151), Radeon 8060S, 121 GiB di RAM **vista dal sistema operativo** dopo il
+carve-out UMA della BIOS, Linux nativo con Podman 5 rootless, pesi su SSD NVMe.
+Su una macchina con RAM diversa o carve-out diverso i valori cambiano: sono un
+punto di riferimento, non una promessa.
+
 ## Inferenza
 
 | metrica | valore |

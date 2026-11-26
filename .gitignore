@@ -1,3 +1,6 @@
 run/
 *.log
 .DS_Store
+
+# indici locali dell'agente, mai nel repo
+.tokensave/

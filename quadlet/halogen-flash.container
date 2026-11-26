@@ -7,14 +7,21 @@ Description=halogen-flash-server — Qwen3.8-Flash-Next (Strix Halo)
 ContainerName=halogen-flash
 Image=ghcr.io/peonist-ai/halogen-flash-server:0.20.7
 # Rete bridge con la sola 8731 pubblicata; il motore resta su 127.0.0.1:8730.
-PublishPort=8731:8731
+# Il bind su 127.0.0.1 e' deliberato: senza, la porta finisce su 0.0.0.0 e
+# chiunque sulla LAN puo' usare il modello e leggere le tue conversazioni.
+# Il server non ha API key per default. Se ti serve dalla rete, metti
+# HALOGEN_API_KEY e pubblica 127.0.0.1 piu' un reverse proxy con TLS.
+PublishPort=127.0.0.1:8731:8731
 AddDevice=/dev/kfd
 AddDevice=/dev/dri
 GroupAdd=keep-groups
 PodmanArgs=--ipc=host --ulimit memlock=-1:-1 --stop-timeout=60
 # Pesi già scaricati: nessun HALOGEN_DOWNLOAD, il container non apre connessioni.
 # Il repo pesi contiene anche tokenizer/, quindi un solo volume basta.
-Volume=/mnt/llm/AI/Models/halogen-qwen3.8-flash-next:/models:ro
+# SOSTITUISCI con il path dove hai messo i pesi: read-only, e deve restare
+# leggibile anche in `docker`/`podman` non-root (rootless: i path sotto $HOME
+# sono sempre ok; un disco esterno deve essere montato con i permessi giusti).
+Volume=/home/tuoutente/halogen-models:/models:ro
 # Contesto: 128k per richiesta (131072 = 128 * 1024). Il default sarebbe 262144.
 Environment=HALOGEN_CTX=131072
 # Pool KV: 4 x ctx = quattro conversazioni da 128k residenti, oppure otto da 64k.
@@ -29,8 +36,11 @@ Environment=HALOGEN_MAX_TOKENS_DEFAULT=16384
 Environment=HALOGEN_VISION_TOWER=1
 # Cache del prompt su disco: sopravvive ai riavvii. Bound default 64 GiB,
 # ~27 KiB per token (una conversazione da 128k = ~3.5 GiB).
+# SOSTITUISCI "tuoutente" col tuo utente: il path deve esistere, altrimenti
+# systemd --user crea una directory vuota di proprieta' di root e la cache
+# resta spenta in silenzio.
 Environment=HALOGEN_CACHE_DIR=/cache
-Volume=/home/gangio/.cache/halogen-cache:/cache
+Volume=/home/tuoutente/.cache/halogen-cache:/cache
 # Tetto della cache su disco. Default 64 GiB, che qui si e' riempito in 5 ore
 # di lavoro agentico (17 conversazioni da ~3.8 GiB l'una) e ha iniziato a
 # sfrattare proprio le sessioni in corso. 96 GiB lascia margine e resta sotto
